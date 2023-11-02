@@ -1,13 +1,12 @@
 import torch
 from torch import nn
 from torchvision import transforms
-from albumentations import augmentations
 
 
 class GaussianNoise(nn.Module):
     """
-    Add gaussian noise to hidden state. Noises are sampled with mean=0 and variance of 10% of the variance of the
-    corresponding channel in the hidden state.
+    Add gaussian noise to hidden state. Noises are sampled with mean=0 and variance of a specified ratio of the 
+    variance of the corresponding channel in the hidden state.
     """
 
     def __init__(self, ratio):
@@ -33,11 +32,12 @@ class RandomResizedCrop(nn.Module):
 
 
 class RandomRotation(nn.Module):
-    def __init__(self):
+    def __init__(self, degree=30):
         super().__init__()
+        self.degrees = degree
 
     def forward(self, hidden_state):
-        return transforms.RandomRotation(30)(hidden_state)
+        return transforms.RandomRotation(self.degree)(hidden_state)
 
 
 class RandomHorizontalFlip(nn.Module):
@@ -47,10 +47,13 @@ class RandomHorizontalFlip(nn.Module):
     def forward(self, hidden_state):
         return transforms.RandomHorizontalFlip()(hidden_state)
 
+
 class GridDropout(nn.Module):
     # TODO: Fix this, this doesn't work
-    def __init__(self):
+    def __init__(self, ratio=0.2):
         super().__init__()
 
     def forward(self, hidden_state):
-        return augmentations.dropout.grid_dropout.GridDropout(0.1).apply(hidden_state)
+        # Generate a mask
+        pass
+
