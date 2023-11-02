@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms, datasets
 from torchvision.datasets import CIFAR10
 from tqdm import tqdm
+import argparse
 
 from resnet import ResNet18_Cifar10
 from vit import ViT
@@ -109,35 +110,39 @@ def validate(model, test_dataloader, loss_fn, device):
     return correct / total * 100, avg_loss / len(test_dataloader)
 
 
-if __name__ == "__main__":
+def main(args):
     device = torch.device("cuda:0")
 
     # Hyperparameters
-    num_epochs = 250
-    batch_size = 128
-    lr = 0.1
-    momentum = 0.9
-    weight_decay = 1e-4
+    if args.dataset == "cifar10":
+        train_dataloader, val_dataloader = load_cifar10(args.batch_size)
+    elif args.dataset == "imagenet1k":
+        train_dataloader, val_dataloader = load_imagenet1k(args.batch_size)
+    else:
+        raise ValueError(f"Unknown dataset {args.dataset}")
+    if args.model == "resnet18":
+        model = ResNet18_Cifar10().to(device)
+    elif args.model == "vit":
+        model = ViT(
+            image_size=32,
+            patch_size=4,
+            num_classes=10,
+            dim=1024,
+            depth=6,
+            heads=16,
+            mlp_dim=2048,
+            dropout=0.1,
+            emb_dropout=0.1,
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model {args.model}")
 
-    train_dataloader, val_dataloader = load_cifar10(batch_size)
-    # model = ResNet18_Cifar10().to(device)
-    model = ViT(
-        image_size=32,
-        patch_size=4,
-        num_classes=10,
-        dim=1024,
-        depth=6,
-        heads=16,
-        mlp_dim=2048,
-        dropout=0.1,
-        emb_dropout=0.1,
-    ).to(device)
-    print(f"Using {torch.cuda.device_count()} GPUs with total batch size {batch_size}")
+    print(f"Using {torch.cuda.device_count()} GPUs with total batch size {args.batch_size}")
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.SGD(
-        model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay
+        model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
     )
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
 
@@ -146,7 +151,7 @@ if __name__ == "__main__":
         "val_loss": 0,
         "val_accuracy": 0,
     }
-    for epoch in range(num_epochs):
+    for epoch in range(args.num_epochs):
         val_loss = float("inf")
         avg_loss, current_lr = train_one_epoch(
             model,
@@ -177,3 +182,20 @@ if __name__ == "__main__":
             f"Epoch: {epoch + 1}; lr: {current_lr:.5f}; train loss: {avg_loss:.4f}; val loss: {val_loss:.4f}; val acc: {accuracy:.2f}; best acc: {best_epoch['val_accuracy']:.2f}"
         )
     print(best_epoch)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="Trainer"
+    )
+    # turn these hyperparameters to arguments with these default values
+    parser.add_argument("--dataset", type=str, default="cifar10")
+    parser.add_argument("--model", type=str, default="resnet18")
+    parser.add_argument("--num_epochs", type=int, default=250)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
+
+    args = parser.parse_args()
+    main(args)
