@@ -1,12 +1,13 @@
+import argparse
+
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torchvision import transforms, datasets
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
-import argparse
 
-from resnet import ResNet18_Cifar10
+from resnet import ResNet18, ResNet50
 from vit import ViT
 import wandb
 
@@ -29,6 +30,36 @@ def load_cifar10(batch_size, num_workers=0):
         num_workers=num_workers,
     )
     cifar10_val_dataset = CIFAR10(
+        root="data", train=False, download=True, transform=transform
+    )
+    cifar10_val_dataloader = DataLoader(
+        cifar10_val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+    )
+    return cifar10_train_dataloader, cifar10_val_dataloader
+
+
+def load_cifar100(batch_size, num_workers=0):
+    transform = transforms.Compose(
+        [
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )
+    cifar10_train_dataset = CIFAR100(
+        root="data", train=True, download=True, transform=transform
+    )
+    cifar10_train_dataloader = DataLoader(
+        cifar10_train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+    )
+    cifar10_val_dataset = CIFAR100(
         root="data", train=False, download=True, transform=transform
     )
     cifar10_val_dataloader = DataLoader(
@@ -116,12 +147,19 @@ def main(args):
     # Hyperparameters
     if args.dataset == "cifar10":
         train_dataloader, val_dataloader = load_cifar10(args.batch_size)
+        num_classes = 10
+    elif args.dataset == "cifar100":
+        train_dataloader, val_dataloader = load_cifar100(args.batch_size)
+        num_classes = 100
     elif args.dataset == "imagenet1k":
         train_dataloader, val_dataloader = load_imagenet1k(args.batch_size)
+        num_classes = 1000
     else:
         raise ValueError(f"Unknown dataset {args.dataset}")
     if args.model == "resnet18":
-        model = ResNet18_Cifar10().to(device)
+        model = ResNet18(num_classes).to(device)
+    elif args.model == "resnet50":
+        model = ResNet50(num_classes).to(device)
     elif args.model == "vit":
         model = ViT(
             image_size=32,
@@ -137,12 +175,17 @@ def main(args):
     else:
         raise ValueError(f"Unknown model {args.model}")
 
-    print(f"Using {torch.cuda.device_count()} GPUs with total batch size {args.batch_size}")
+    print(
+        f"Using {torch.cuda.device_count()} GPUs with total batch size {args.batch_size}"
+    )
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.SGD(
-        model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay
+        model.parameters(),
+        lr=args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay,
     )
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
 
@@ -185,9 +228,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="Trainer"
-    )
+    parser = argparse.ArgumentParser(prog="Trainer")
     # turn these hyperparameters to arguments with these default values
     parser.add_argument("--dataset", type=str, default="cifar10")
     parser.add_argument("--model", type=str, default="resnet18")
