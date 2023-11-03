@@ -8,7 +8,7 @@ import argparse
 
 from resnet import ResNet18_Cifar10
 from vit import ViT
-
+import wandb
 
 def load_cifar10(batch_size, num_workers=0):
     transform = transforms.Compose(
@@ -198,4 +198,6 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=1e-4)
 
     args = parser.parse_args()
+    wandb.login()
+    wandb.init(project="layer-augmentation", config=args)
     main(args)
