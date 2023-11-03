@@ -7,7 +7,7 @@ from torchvision import transforms, datasets
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
 
-from resnet import ResNet18_Cifar10
+from resnet import ResNet18, ResNet50
 from vit import ViT
 
 
@@ -147,14 +147,19 @@ def main(args):
     # Hyperparameters
     if args.dataset == "cifar10":
         train_dataloader, val_dataloader = load_cifar10(args.batch_size)
+        num_classes = 10
     elif args.dataset == "cifar100":
         train_dataloader, val_dataloader = load_cifar100(args.batch_size)
+        num_classes = 100
     elif args.dataset == "imagenet1k":
         train_dataloader, val_dataloader = load_imagenet1k(args.batch_size)
+        num_classes = 1000
     else:
         raise ValueError(f"Unknown dataset {args.dataset}")
     if args.model == "resnet18":
-        model = ResNet18_Cifar10().to(device)
+        model = ResNet18(num_classes).to(device)
+    elif args.model == "resnet50":
+        model = ResNet50(num_classes).to(device)
     elif args.model == "vit":
         model = ViT(
             image_size=32,

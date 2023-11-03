@@ -95,11 +95,20 @@ class BottleneckBlock(nn.Module):
         return hidden_state
 
 
-class ResNet18_Cifar10(nn.Module):
-    def __init__(self):
+class ResNet18(nn.Module):
+    def __init__(self, num_classes=1000):
         super().__init__()
+        is_imagenet = num_classes == 1000
         self.first_conv = ResNetConvLayer(
-            in_channels=3, out_channels=64, kernel_size=3, stride=1
+            in_channels=3,
+            out_channels=64,
+            kernel_size=7 if is_imagenet else 3,
+            stride=2 if is_imagenet else 1,
+        )
+        self.max_pool = (
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+            if is_imagenet
+            else nn.Identity()
         )
         channels_config = [
             (64, 64, 2),
@@ -120,10 +129,11 @@ class ResNet18_Cifar10(nn.Module):
                 resnet_blocks_list.append(ResiduleBlock(out_channels, out_channels))
         self.resnet_blocks = nn.Sequential(*resnet_blocks_list)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, 10)
+        self.fc = nn.Linear(512, num_classes)
 
     def forward(self, pixel_values):
         hidden_state = self.first_conv(pixel_values)
+        hidden_state = self.max_pool(hidden_state)
         hidden_state = self.resnet_blocks(hidden_state)
         hidden_state = self.avg_pool(hidden_state)
         hidden_state = hidden_state.view(hidden_state.size(0), -1)
@@ -131,11 +141,20 @@ class ResNet18_Cifar10(nn.Module):
         return logits
 
 
-class ResNet50_Cifar10(nn.Module):
-    def __init__(self):
+class ResNet50(nn.Module):
+    def __init__(self, num_classes=1000):
         super().__init__()
+        is_imagenet = num_classes == 1000
         self.first_conv = ResNetConvLayer(
-            in_channels=3, out_channels=64, kernel_size=3, stride=1
+            in_channels=3,
+            out_channels=64,
+            kernel_size=7 if is_imagenet else 3,
+            stride=2 if is_imagenet else 1,
+        )
+        self.max_pool = (
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+            if is_imagenet
+            else nn.Identity()
         )
         channels_config = [
             (64, 64, 256, 3),
@@ -162,50 +181,7 @@ class ResNet50_Cifar10(nn.Module):
                 )
         self.resnet_blocks = nn.Sequential(*resnet_blocks_list)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(2048, 10)
-
-    def forward(self, pixel_values):
-        hidden_state = self.first_conv(pixel_values)
-        hidden_state = self.resnet_blocks(hidden_state)
-        hidden_state = self.avg_pool(hidden_state)
-        hidden_state = hidden_state.view(hidden_state.size(0), -1)
-        logits = self.fc(hidden_state)
-        return logits
-
-
-class ResNet50_ImageNet1k(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.first_conv = ResNetConvLayer(
-            in_channels=3, out_channels=64, kernel_size=7, stride=2
-        )
-        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
-        channels_config = [
-            (64, 64, 256, 3),
-            (256, 128, 512, 4),
-            (512, 256, 1024, 6),
-            (1024, 512, 2048, 3),
-        ]
-        resnet_blocks_list = nn.ModuleList([])
-        for i, (
-            in_channels,
-            bottlenecked_channels,
-            out_channels,
-            num_blocks,
-        ) in enumerate(channels_config):
-            resnet_blocks_list.append(
-                # No downsample for the first block as we have already downsampled in the first conv layer
-                BottleneckBlock(
-                    in_channels, bottlenecked_channels, out_channels, downsample=i != 0
-                )
-            )
-            for _ in range(num_blocks - 1):
-                resnet_blocks_list.append(
-                    BottleneckBlock(out_channels, bottlenecked_channels, out_channels)
-                )
-        self.resnet_blocks = nn.Sequential(*resnet_blocks_list)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(2048, 1000)
+        self.fc = nn.Linear(2048, num_classes)
 
     def forward(self, pixel_values):
         hidden_state = self.first_conv(pixel_values)
