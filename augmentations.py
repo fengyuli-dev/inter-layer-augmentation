@@ -76,3 +76,5 @@ class GridDropout(nn.Module):
             col = (idx % (n // grid_size)) * grid_size
             mask[:, :, row : row + grid_size, col : col + grid_size] = 0
         return hidden_state * mask
+
+
