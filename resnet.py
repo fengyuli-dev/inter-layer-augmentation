@@ -124,7 +124,7 @@ class ResNet18(nn.Module):
                 # No downsample for the first block as we have already downsampled in the first conv layer
                 ResiduleBlock(in_channels, out_channels, downsample=i != 0)
             )
-            resnet_blocks_list.append(augmentations.GridDropout())
+            # resnet_blocks_list.append(augmentations.GridDropout())
             for _ in range(num_blocks - 1):
                 resnet_blocks_list.append(ResiduleBlock(out_channels, out_channels))
         self.resnet_blocks = nn.Sequential(*resnet_blocks_list)

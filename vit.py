@@ -100,7 +100,8 @@ class ViT(nn.Module):
         channels=3,
         dim_head=64,
         dropout=0.0,
-        emb_dropout=0.0
+        emb_dropout=0.0,
+        **kwargs
     ):
         super().__init__()
         image_height, image_width = pair(image_size)

@@ -6,10 +6,13 @@ from torch.utils.data import DataLoader
 from torchvision import transforms, datasets
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
+import warmup_scheduler
 
 from resnet import ResNet18, ResNet50
 from vit import ViT
 import wandb
+from datetime import datetime
+import os
 
 def load_cifar10(batch_size, num_workers=0):
     transform = transforms.Compose(
@@ -134,6 +137,7 @@ def validate(model, test_dataloader, loss_fn, device):
         for data in tqdm(test_dataloader, desc="Validating"):
             images, labels = data[0].to(device), data[1].to(device)
             outputs = model(images)
+            breakpoint()
             avg_loss += loss_fn(outputs, labels).item()
             _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
@@ -142,6 +146,8 @@ def validate(model, test_dataloader, loss_fn, device):
 
 
 def main(args):
+    time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    os.mkdir(f"experiments/{time}")
     device = torch.device("cuda:0")
 
     # Hyperparameters
@@ -164,13 +170,14 @@ def main(args):
         model = ViT(
             image_size=32,
             patch_size=4,
-            num_classes=10,
-            dim=1024,
+            num_classes=num_classes,
+            dim=args.latent_dim,
             depth=6,
             heads=16,
             mlp_dim=2048,
             dropout=0.1,
             emb_dropout=0.1,
+            grid_dropout=args.grid_dropout
         ).to(device)
     else:
         raise ValueError(f"Unknown model {args.model}")
@@ -187,15 +194,25 @@ def main(args):
         momentum=args.momentum,
         weight_decay=args.weight_decay,
     )
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
+    if args.lr_schedule == "cosine":
+        # use linear warm-up with cosine decay
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs, eta_min=0.0)
+    elif args.lr_schedule == "cosine_warmup":
+        base_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs, eta_min=1e-9)
+        lr_scheduler = warmup_scheduler.GradualWarmupScheduler(optimizer, multiplier=1., total_epoch=args.warmup_epochs, after_scheduler=base_scheduler)
+        # lr_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    else:
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
 
     best_epoch = {
         "epoch": 0,
         "val_loss": 0,
         "val_accuracy": 0,
     }
+    wandb.watch(model, loss_fn, log="all", log_freq=10)
     for epoch in range(args.num_epochs):
         val_loss = float("inf")
+
         avg_loss, current_lr = train_one_epoch(
             model,
             train_dataloader,
@@ -215,15 +232,18 @@ def main(args):
                 if lr_scheduler
                 else None,
             },
-            f"experiments/ckpt_epoch_{epoch + 1}.pt",
-        )
+            f"experiments/{time}/ckpt.pt"
+        ) 
         if accuracy > best_epoch["val_accuracy"]:
             best_epoch["epoch"] = epoch
             best_epoch["val_loss"] = val_loss
             best_epoch["val_accuracy"] = accuracy
-        print(
-            f"Epoch: {epoch + 1}; lr: {current_lr:.5f}; train loss: {avg_loss:.4f}; val loss: {val_loss:.4f}; val acc: {accuracy:.2f}; best acc: {best_epoch['val_accuracy']:.2f}"
-        )
+        log_dict = {"epoch": epoch+1, "lr": current_lr, "train_loss": avg_loss, "val_loss": val_loss, "val_acc": accuracy, "best_acc": best_epoch["val_accuracy"]}
+        wandb.log(log_dict)
+        if epoch % 10 == 0:
+            print(
+                f"Epoch: {epoch + 1}; lr: {current_lr:.5f}; train loss: {avg_loss:.4f}; val loss: {val_loss:.4f}; val acc: {accuracy:.2f}; best acc: {best_epoch['val_accuracy']:.2f}"
+            )
     print(best_epoch)
 
 
@@ -235,8 +255,18 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=250)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--lr_schedule", type=str, default="step")
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+
+    # vit parameters
+    parser.add_argument("--latent_dim", type=int, default=256)
+    parser.add_argument("--warmup_epochs", type=int, default=10)
+
+    # experiments
+    parser.add_argument("--grid_dropout", type=bool, default=False)
+    parser.add_argument("--gaussian_noise", type=bool, default=False)
+
 
     args = parser.parse_args()
     wandb.login()

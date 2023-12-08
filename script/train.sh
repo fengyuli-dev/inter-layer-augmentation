@@ -1,1 +1,1 @@
-python trainer.py 
+python trainer.py --model vit --dataset cifar10 --batch_size 32 --lr_schedule cosine_warmup --warmup_epochs 10
